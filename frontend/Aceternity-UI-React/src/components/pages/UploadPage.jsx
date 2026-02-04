@@ -229,8 +229,8 @@ const UploadPage = () => {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      // const response = await fetch('http://localhost:80/upload/totext', {
-      const response = await fetch('https://qmetric-2.onrender.com/upload/totext', {
+      const response = await fetch('http://localhost:80/upload/totext', {
+      // // const response = await fetch('https://qmetric-2.onrender.com/upload/totext', {
         method: 'POST',
         headers,
         body: formDataToSend
