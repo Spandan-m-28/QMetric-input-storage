@@ -3,3 +3,4 @@ uploads
 app.js
 .env
 Person.js
+credentials.json

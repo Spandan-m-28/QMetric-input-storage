@@ -1,6 +1,7 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const User = require('../Model/user');
+const uploadUserBackup = require("../utils/userBackup");
 
 // Create Account Controller
 const createAccount = async (req, res) => {
@@ -35,6 +36,10 @@ const createAccount = async (req, res) => {
     });
 
     await user.save();
+
+    uploadUserBackup(user).catch(err => {
+        console.error("Drive backup failed:", err.message);
+    });
 
     try {
         // Create JWT Token

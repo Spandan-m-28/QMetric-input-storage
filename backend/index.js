@@ -7,6 +7,8 @@ const cookieParser = require('cookie-parser');
 const logger = require('morgan');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const googleAuthRouter = require('./routes/gdriveAuth');
+
 
 const fileRouter = require('./routes/file');
 const usersRouter = require('./routes/auth');
@@ -42,6 +44,7 @@ app.use(logger('dev'));
   // Routes
   app.use('/upload', fileRouter);
   app.use('/auth', usersRouter);
+  app.use('/auth', googleAuthRouter);
 
   // 404 handler
   app.use((req, res, next) => {
@@ -56,6 +59,7 @@ app.use(logger('dev'));
     res.json({ error: 'An error occurred' }); 
 
   });
+
 
   // Start server
   const PORT = process.env.PORT || 80;
