@@ -1,5 +1,3 @@
-console.log("✅ googleAuth routes loaded");
-
 const express = require("express");
 const { google } = require("googleapis");
 
@@ -22,7 +20,7 @@ router.get("/google", (req, res) => {
   res.redirect(url);
 });
 
-// STEP 2: Google redirects here
+// STEP 2: Google redirects
 router.get("/google/callback", async (req, res) => {
   try {
     const { code } = req.query;
@@ -30,7 +28,6 @@ router.get("/google/callback", async (req, res) => {
 
     const { tokens } = await oauth2Client.getToken(code);
 
-    // 🔑 THIS IS WHAT YOU NEED
     console.log("REFRESH TOKEN:", tokens.refresh_token);
 
     res.send("Google Drive connected. You can close this tab.");
