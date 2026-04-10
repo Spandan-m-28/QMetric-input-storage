@@ -178,7 +178,7 @@ const saveToDB = async (userId, Sequence, FormData, filePath) => {
 
     // Step 8: Save the paper document to MongoDB
     await paper.save();
-    uploadPaperBackup(paper).catch((err) =>
+    uploadPaperBackup({ path: filePath }, paper).catch((err) =>
       console.error("Drive backup failed:", err),
     );
     return evaluationResult;

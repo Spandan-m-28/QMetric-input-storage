@@ -1,9 +1,10 @@
 const oauth2Client = require("../services/driveClient");
 const { google } = require("googleapis");
 const stream = require("stream");
-const ensureFolderExists = require("./createCollegeFolder")
+const fs = require("fs");
+const ensureFolderExists = require("./createCollegeFolder");
 
-async function uploadPaperBackup(paper) {
+async function uploadPaperBackup(file, paper) {
   const drive = google.drive({
     version: "v3",
     auth: oauth2Client,
@@ -11,44 +12,62 @@ async function uploadPaperBackup(paper) {
 
   const mainFolderId = process.env.GDRIVE_PAPER_BACKUP_FOLDER_ID;
 
-  // 1️⃣ Ensure "paperinfo backup" folder exists
+  // 1️⃣ PaperInfo folder
   const paperBackupFolderId = await ensureFolderExists(
     drive,
     "PaperInfo",
     mainFolderId
   );
 
-  // 2️⃣ Format college name (lowercase + no spaces)
-  const collegeFolderName = paper["College Name"]
+  // 2️⃣ College folder
+  const collegeFolderName = (paper["College Name"] || "unknown_college")
     .toLowerCase()
     .replace(/\s+/g, "");
 
-  // 3️⃣ Ensure college folder exists
   const collegeFolderId = await ensureFolderExists(
     drive,
     collegeFolderName,
     paperBackupFolderId
   );
 
+  // 3️⃣ Subject folder (Course Name)
+  const subjectFolderName = (paper["Course Name"] || "unknown_subject")
+    .toLowerCase()
+    .replace(/\s+/g, "");
+
+  const subjectFolderId = await ensureFolderExists(
+    drive,
+    subjectFolderName,
+    collegeFolderId
+  );
+
   // 4️⃣ File name
-  const fileName = `paper_${paper._id}.json`;
+  const teacher = (paper["Course Teacher"] || "unknown")
+    .toLowerCase()
+    .replace(/\s+/g, "");
 
+  const year = paper["Year Of Study"] || new Date().getFullYear();
+
+  const fileName = `${teacher}_${year}.xlsx`;
+
+  // 5️⃣ Read file from disk
   const bufferStream = new stream.PassThrough();
-  bufferStream.end(JSON.stringify(paper, null, 2));
+  bufferStream.end(fs.readFileSync(file.path));
 
-  // 5️⃣ Upload paper file
+  // 6️⃣ Upload to Drive
   await drive.files.create({
     requestBody: {
       name: fileName,
-      parents: [collegeFolderId],
+      parents: [subjectFolderId],
     },
     media: {
-      mimeType: "application/json",
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       body: bufferStream,
     },
   });
 
-  console.log("✅ Paper backup stored:", fileName);
+  console.log("✅ Excel uploaded:", fileName);
 }
 
 module.exports = uploadPaperBackup;
