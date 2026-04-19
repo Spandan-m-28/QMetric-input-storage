@@ -12,6 +12,8 @@ const UploadPage = () => {
     "Course Teacher": ""
   });
 
+  const API_BASE_URL = process.env.REACT_APP_API_URL;
+
   const [courseOutcomes, setCourseOutcomes] = useState([]);
   const [modules, setModules] = useState([]);
   const [numCOs, setNumCOs] = useState('');
@@ -229,7 +231,10 @@ const UploadPage = () => {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await fetch('http://localhost:80/upload/totext', {
+
+      // const response = await fetch(`${API_BASE_URL}/upload/totext`);
+
+      const response = await fetch(`${API_BASE_URL}/upload/totext`, {
       // // const response = await fetch('https://qmetric-2.onrender.com/upload/totext', {
         method: 'POST',
         headers,

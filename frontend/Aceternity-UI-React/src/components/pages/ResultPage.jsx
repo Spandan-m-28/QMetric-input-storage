@@ -59,6 +59,8 @@ const Gauge = ({ value = 0, size = 220 }) => {
 };
 
 const ResultPage = () => {
+  const API_BASE_URL = process.env.REACT_APP_API_URL;
+
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -81,7 +83,7 @@ const ResultPage = () => {
       setLoading(true);
       setError(null);
       
-      const response = await fetch('http://localhost:80/upload/totext', { 
+      const response = await fetch(`${API_BASE_URL}/upload/totext`, { 
       // const response = await fetch('https://qmetric-2.onrender.com/upload/totext', {
         method: 'POST',
         method: 'GET',

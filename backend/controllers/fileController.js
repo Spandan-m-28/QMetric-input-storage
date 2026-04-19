@@ -1,7 +1,7 @@
 //version2
 const path = require("path");
 const fs = require("fs");
-const { Structurize } = require("../core/Regex/Regex");
+const { Structurize } = require("../core/Regex/regex_temp.js");
 const PaperInfo = require("../Model/PaperInfo");
 const { Evaluate } = require("../core/evaluate/evaluate");
 const uploadPaperBackup = require("../utils/paperInfoBackup");
