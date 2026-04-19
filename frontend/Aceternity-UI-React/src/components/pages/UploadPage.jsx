@@ -26,7 +26,7 @@ const UploadPage = () => {
   // Validation function
   const validateForm = () => {
     setError('');
-    
+
     // Check required fields
     const requiredFields = ["College Name", "Branch", "Course Name", "Course Code"];
     for (let field of requiredFields) {
@@ -35,13 +35,13 @@ const UploadPage = () => {
         return false;
       }
     }
-    
+
     // Validate course outcomes
     if (courseOutcomes.length === 0) {
       setError("At least one course outcome is required");
       return false;
     }
-    
+
     // Validate course outcomes have required fields
     for (let i = 0; i < courseOutcomes.length; i++) {
       const co = courseOutcomes[i];
@@ -54,20 +54,20 @@ const UploadPage = () => {
         return false;
       }
     }
-    
+
     // Validate weight sum
     const totalWeight = courseOutcomes.reduce((sum, co) => sum + (parseFloat(co.weight) || 0), 0);
     if (Math.abs(totalWeight - 100) > 0.01) {
       setError(`Course outcome weights should sum to 100%. Current total: ${totalWeight.toFixed(1)}%`);
       return false;
     }
-    
+
     // Validate modules
     if (modules.length === 0) {
       setError("At least one module is required");
       return false;
     }
-    
+
     for (let i = 0; i < modules.length; i++) {
       const module = modules[i];
       if (!module.name.trim()) {
@@ -79,7 +79,7 @@ const UploadPage = () => {
         return false;
       }
     }
-    
+
     return true;
   };
 
@@ -152,21 +152,37 @@ const UploadPage = () => {
     e.preventDefault();
     setDragOver(false);
     const droppedFile = e.dataTransfer.files[0];
-    
     if (droppedFile && isValidFileType(droppedFile)) {
       setFile(droppedFile);
       setError('');
     } else {
-      setError('Please upload a valid Excel (.xlsx, .xls) or PDF file');
+      setError('Please upload a valid Excel (.xlsx, .xls), PDF, or image (.jpg, .png) file');
     }
   };
 
   const isValidFileType = (file) => {
     const allowedTypes = [
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
-      'application/vnd.ms-excel', // .xls
+      'application/vnd.ms-excel',                                           // .xls
+      'application/pdf',                                                    // .pdf
+      'image/jpeg',                                                         // .jpg
+      'image/png',                                                          // .png
     ];
     return allowedTypes.includes(file.type);
+  };
+
+  // Helper to check if uploaded file is PDF or image (routes to /upload/pdf)
+  const isPDFOrImage = (file) => {
+    const pdfImageTypes = ['application/pdf', 'image/jpeg', 'image/png'];
+    return pdfImageTypes.includes(file.type);
+  };
+
+  // Helper to get a human-readable file type label for UI display
+  const getFileTypeLabel = (file) => {
+    if (!file) return '';
+    if (file.type === 'application/pdf') return 'PDF';
+    if (file.type === 'image/jpeg' || file.type === 'image/png') return 'Image';
+    return 'Excel';
   };
 
   const handleFileChange = (e) => {
@@ -176,7 +192,7 @@ const UploadPage = () => {
         setFile(selectedFile);
         setError('');
       } else {
-        setError('Please upload a valid Excel (.xlsx, .xls) or PDF file');
+        setError('Please upload a valid Excel (.xlsx, .xls), PDF, or image (.jpg, .png) file');
         e.target.value = '';
       }
     }
@@ -184,7 +200,7 @@ const UploadPage = () => {
 
   const handleSubmit = async () => {
     if (!file) {
-      setError("Please upload a file (Excel or PDF)!");
+      setError("Please upload a file (Excel, PDF, or Image)!");
       return;
     }
 
@@ -197,36 +213,38 @@ const UploadPage = () => {
 
     // Transform course outcomes and modules into backend's expected format
     const transformedSequence = [
-      // Add course outcomes with backend structure
       ...courseOutcomes.map((co, index) => ({
         name: `CO${index + 1}`,
         type: "CO",
-        weight: parseFloat(co.weight), // Convert to number
-        blooms: [co.blooms] // Convert to array
+        weight: parseFloat(co.weight),
+        blooms: [co.blooms]
       })),
-      // Add modules with backend structure
       ...modules.map(module => ({
         name: module.name,
         type: "Module",
-        hours: parseFloat(module.hours) // Convert to number
+        hours: parseFloat(module.hours)
       }))
     ];
 
     // Prepare form data to send to the backend
     const formDataToSend = new FormData();
     formDataToSend.append("file", file);
-    formDataToSend.append("FormData", JSON.stringify(formData)); // Capital F
-    formDataToSend.append("Sequence", JSON.stringify(transformedSequence)); // Backend expects Sequence
+    formDataToSend.append("FormData", JSON.stringify(formData));
+    formDataToSend.append("Sequence", JSON.stringify(transformedSequence));
+
     console.log("FormData:", formData);
     console.log("Sequence:", transformedSequence);
+    console.log("Uploading file...");
 
+      const endpoint = isPDFOrImage(file)
+      ? 'http://localhost:5000/upload/pdf'      // PDF and images → Advance parser
+      : 'http://localhost:5000/upload/totext';  // Excel → existing parser
 
     try {
       const token = sessionStorage.getItem('accessToken');
       console.log('Token:', token);
 
       const headers = {};
-      
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }
@@ -245,37 +263,28 @@ const UploadPage = () => {
       if (response.ok) {
         let responseData;
         let resultId;
-
         try {
           responseData = await response.json();
           console.log('Full response:', responseData);
 
-          // Extract the ID from response - adjust based on your backend's response structure
+          // Extract the ID from response
           if (typeof responseData === 'string') {
-            // If response is directly the ID as string
             resultId = responseData._id;
           } else if (responseData.id) {
-            // If response has an id field
             resultId = responseData._id;
           } else if (responseData.result_id) {
-            // If response has a result_id field
             resultId = responseData.result_id;
           } else if (responseData.data && responseData.data.id) {
-            // If response has nested id
             resultId = responseData.data.id;
           } else {
-            // If response is an object, you might need to extract differently
             console.warn('Could not extract ID from response:', responseData);
-            resultId = responseData; // fallback
+            resultId = responseData;
           }
 
           console.log('Extracted ID:', resultId);
 
           if (resultId) {
-            // Success message
             alert('File uploaded and processed successfully!');
-
-            // Redirect to result page using native browser navigation
             window.location.href = '/result';
 
             // Reset form on success
@@ -294,24 +303,20 @@ const UploadPage = () => {
           } else {
             throw new Error('No result ID received from server');
           }
-
         } catch (jsonError) {
           console.error('Error parsing response:', jsonError);
           setError('Invalid response from server. Please try again.');
         }
-
       } else {
         // Handle error responses
         let errorMessage;
         try {
           const text = await response.text();
           if (text) {
-            // Try to parse as JSON first
             try {
               const data = JSON.parse(text);
               errorMessage = data.message || data.error || text;
             } catch {
-              // If not JSON, use the text directly
               errorMessage = text;
             }
           } else {
@@ -323,7 +328,6 @@ const UploadPage = () => {
 
         console.error('Upload failed:', errorMessage);
 
-        // Provide more specific error messages
         if (response.status === 403) {
           setError('Access denied. Please check your authentication token or login again.');
         } else if (response.status === 401) {
@@ -363,7 +367,6 @@ const UploadPage = () => {
       ['Explain the concept of...?', 'CO2', '10', 'Medium', 'Module 2'],
       ['Analyze the following...?', 'CO3', '15', 'Hard', 'Module 3']
     ];
-    
     const csvContent = sampleData.map(row => row.join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -413,7 +416,6 @@ const UploadPage = () => {
               <span className="w-6 h-6 bg-gray-900 text-white text-xs rounded flex items-center justify-center">1</span>
               <span>Course Information</span>
             </h2>
-            
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {Object.keys(formData).map((key) => (
                 <div key={key}>
@@ -445,7 +447,6 @@ const UploadPage = () => {
               </h2>
               <p className="text-sm text-gray-600 ml-7">Define learning objectives with weights and cognitive levels. Weights must sum to 100%.</p>
             </div>
-            
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Number of Course Outcomes <span className="text-red-500">*</span>
@@ -460,7 +461,6 @@ const UploadPage = () => {
                 className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-gray-500 text-black bg-white"
               />
             </div>
-
             {courseOutcomes.length > 0 && (
               <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-200">
                 <div className="text-sm">
@@ -470,7 +470,6 @@ const UploadPage = () => {
                 </div>
               </div>
             )}
-
             {courseOutcomes.length === 0 ? (
               <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
                 <Target className="text-gray-400 mx-auto mb-3" size={32} />
@@ -496,7 +495,6 @@ const UploadPage = () => {
                         <Trash2 size={16} />
                       </button>
                     </div>
-
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -547,7 +545,6 @@ const UploadPage = () => {
               </h2>
               <p className="text-sm text-gray-600 ml-7">Organize your course content into modules with corresponding teaching hours.</p>
             </div>
-            
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Number of Modules <span className="text-red-500">*</span>
@@ -562,7 +559,6 @@ const UploadPage = () => {
                 className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-gray-500 text-black bg-white"
               />
             </div>
-
             {modules.length === 0 ? (
               <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
                 <BookOpen className="text-gray-400 mx-auto mb-3" size={32} />
@@ -588,7 +584,6 @@ const UploadPage = () => {
                         <Trash2 size={16} />
                       </button>
                     </div>
-
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -642,11 +637,11 @@ const UploadPage = () => {
 
             <div
               className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
-                dragOver 
-                  ? 'border-gray-500 bg-gray-100' 
-                  : file 
-                    ? 'border-green-500 bg-green-50' 
-                    : 'border-gray-300 hover:border-gray-400'
+                dragOver
+                  ? 'border-gray-500 bg-gray-100'
+                  : file
+                  ? 'border-green-500 bg-green-50'
+                  : 'border-gray-300 hover:border-gray-400'
               }`}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
@@ -657,7 +652,13 @@ const UploadPage = () => {
                   <FileText className="text-green-600 mx-auto" size={32} />
                   <div>
                     <p className="font-medium text-gray-900">{file.name}</p>
-                    <p className="text-sm text-gray-600">Ready to upload ({(file.size / 1024 / 1024).toFixed(2)} MB)</p>
+                    {/* ✅ CHANGE 3: Show file type badge so user knows which parser will be used */}
+                    <p className="text-xs text-blue-600 font-medium mt-1">
+                      📄 Ready for processing
+                    </p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Ready to upload ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -673,11 +674,14 @@ const UploadPage = () => {
                   <div>
                     <p className="font-medium text-gray-900">Upload Paper File</p>
                     <p className="text-sm text-gray-600">Drag and drop your file here or click to browse</p>
-                    <p className="text-xs text-gray-500 mt-1">Supported formats: .xlsx, .xls (Max 10MB)</p>
+                    {/* ✅ CHANGE 3: Updated supported formats text and accept attribute */}
+                    <p className="text-xs text-gray-500 mt-1">
+                      Supported formats: .xlsx, .xls, .pdf, .jpg, .png (Max 10MB)
+                    </p>
                   </div>
                   <input
                     type="file"
-                    accept=".xlsx,.xls"
+                    accept=".xlsx,.xls,.pdf,.jpg,.jpeg,.png"
                     onChange={handleFileChange}
                     className="hidden"
                     id="file-upload"
@@ -705,7 +709,9 @@ const UploadPage = () => {
               {isUploading ? (
                 <>
                   <Loader2 size={18} className="animate-spin" />
-                  <span>Uploading...</span>
+                  <span>
+                    Processing...
+                  </span>
                 </>
               ) : (
                 <>

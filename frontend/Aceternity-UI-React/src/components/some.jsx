@@ -159,7 +159,7 @@ const Navbar = () => {
 
     try {
       // Fixed the typo in the API URL
-      const apiUrl = isRegisterMode ? 'http://localhost:80/auth/register' : 'http://localhost:80/auth/login';
+      const apiUrl = isRegisterMode ? 'http://localhost:5000/auth/register' : 'http://localhost:5000/auth/login';
     
       const requestBody = isRegisterMode 
         ? {

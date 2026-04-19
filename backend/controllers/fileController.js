@@ -1,7 +1,7 @@
 //version2
 const path = require("path");
 const fs = require("fs");
-const { Structurize } = require("../core/Regex/regex_temp.js");
+const { Structurize, FindBloomLevelsInText } = require("../core/Regex/regex_temp.js");
 const PaperInfo = require("../Model/PaperInfo");
 const { Evaluate } = require("../core/evaluate/evaluate");
 const uploadPaperBackup = require("../utils/paperInfoBackup");
@@ -13,21 +13,14 @@ exports.convertToText = async (req, res) => {
 
   const { userId } = req.user;
 
-  console.log("✅ Received POST /upload/totext");
-  console.log("req.body keys:", Object.keys(req.body));
-  console.log("req.body.FormData (raw):", req.body.FormData);
-  console.log("req.body.Sequence (raw):", req.body.Sequence);
-  console.log("req.file:", req.file);
-  console.log("userId:", userId);
-
   const inputFileName = req.file.originalname;
   const fileExtension = path.extname(inputFileName).toLowerCase();
-  const supportedExtensions = [".xlsx"];
+  const supportedExtensions = [".xlsx", ".pdf", ".csv"];
 
   if (!supportedExtensions.includes(fileExtension)) {
     return res.status(400).send({
       error: "Invalid File Format",
-      message: "Only Excel files (.xlsx) are supported.",
+      message: "Only Excel files (.xlsx), CSV files, and Digital text PDFs are supported.",
     });
   }
 
@@ -43,22 +36,20 @@ exports.convertToText = async (req, res) => {
       req.body.FormData,
       req.file.path,
     );
+
     if (result.error) {
-      return res.status(500).send(result);
+      return res.status(result.statusCode || 500).send(result);
     }
 
-    return res.send(result);
+    return res.status(200).json({ success: true, data: result });
   } catch (error) {
     console.error("Error during conversion or DB save:", error);
-    return res
-      .status(500)
-      .send({ error: "Server error while processing file" });
+    return res.status(500).send({ error: "Server error while processing file" });
   }
 };
 
 const saveToDB = async (userId, Sequence, FormData, filePath) => {
   try {
-    // Step 1: Safely Parse Input JSON
     let sequenceArray, formData;
 
     try {
@@ -73,9 +64,8 @@ const saveToDB = async (userId, Sequence, FormData, filePath) => {
     const moduleHours = {};
     const coDetails = {};
 
-    // Step 2: Process Sequence and FormData to Extract COs and Modules
     sequenceArray.forEach((item) => {
-      const match = item.name.match(/\d+/); // Match the CO or Module number
+      const match = item.name.match(/\d+/);
       if (!match) return;
 
       const number = match[0];
@@ -84,11 +74,8 @@ const saveToDB = async (userId, Sequence, FormData, filePath) => {
         const coKey = `CO${number}`;
         const weight = parseFloat(item.weight || 0);
 
-        // Normalize Bloom levels to lowercase
         const blooms = Array.isArray(item.blooms)
-          ? item.blooms
-              .filter((b) => typeof b === "string")
-              .map((b) => b.toLowerCase())
+          ? item.blooms.filter((b) => typeof b === "string").map((b) => b.toLowerCase())
           : typeof item.blooms === "string"
             ? [item.blooms.toLowerCase()]
             : [];
@@ -100,65 +87,63 @@ const saveToDB = async (userId, Sequence, FormData, filePath) => {
       }
     });
 
-    // Step 3: Define all 6 Bloom levels in standard order
-    const allBloomLevels = [
-      "create",
-      "evaluate",
-      "analyze",
-      "apply",
-      "understand",
-      "remember",
-    ];
+    const allBloomLevels = ["create", "evaluate", "analyze", "apply", "understand", "remember"];
     const bloomLevelMap = {};
-
-    // Step 4: Collect unique Bloom levels used in COs
     const usedBloomLevels = new Set();
+
     Object.values(coDetails).forEach((data) => {
       const bloom = (data.blooms[0] || "").toLowerCase();
-      if (bloom && allBloomLevels.includes(bloom)) {
-        usedBloomLevels.add(bloom);
-      }
+      if (bloom && allBloomLevels.includes(bloom)) usedBloomLevels.add(bloom);
     });
 
-    // Step 5: Sort used Bloom levels by their standard order
-    const sortedUsedBlooms = allBloomLevels.filter((level) =>
-      usedBloomLevels.has(level),
-    );
+    const sortedUsedBlooms = allBloomLevels.filter((level) => usedBloomLevels.has(level));
+    sortedUsedBlooms.forEach((bloom, index) => { bloomLevelMap[bloom] = index + 1; });
 
-    // Step 6: Assign levels dynamically (1, 2, 3, ... based on what's used)
-    sortedUsedBlooms.forEach((bloom, index) => {
-      bloomLevelMap[bloom] = index + 1;
-    });
-
-    // Step 7: Assign remaining unused Bloom levels to next available level
     let nextLevel = sortedUsedBlooms.length + 1;
     allBloomLevels.forEach((level) => {
-      if (!bloomLevelMap[level] && nextLevel <= 6) {
-        bloomLevelMap[level] = nextLevel;
-        nextLevel++;
-      }
+      if (!bloomLevelMap[level] && nextLevel <= 6) { bloomLevelMap[level] = nextLevel; nextLevel++; }
     });
+    allBloomLevels.forEach((level) => { if (!bloomLevelMap[level]) bloomLevelMap[level] = 6; });
 
-    // Step 8: Any remaining levels get assigned to level 6
-    allBloomLevels.forEach((level) => {
-      if (!bloomLevelMap[level]) {
-        bloomLevelMap[level] = 6;
+    let questionData = [];
+    const ext = path.extname(filePath).toLowerCase();
+
+    if (ext === ".xlsx" || ext === ".csv") {
+      questionData = await Structurize([], filePath, bloomLevelMap);
+    } else {
+      try {
+        const { parseTextToVirtualExcel } = require("../core/Parser/VirtualExcelAdapter");
+        let rawText = "";
+
+        if (ext === ".pdf") {
+          const pdfParse = require("pdf-parse");
+          const dataBuffer = fs.readFileSync(filePath);
+          const data = await pdfParse(dataBuffer);
+          rawText = data.text;
+
+          if (rawText.trim().length < 50) {
+            return {
+              statusCode: 400,
+              error: "Only digital text PDFs are supported. Scanned documents cannot be processed.",
+            };
+          }
+        } else {
+          return { statusCode: 400, error: "Unsupported file format for text extraction." };
+        }
+
+        questionData = parseTextToVirtualExcel(rawText, bloomLevelMap);
+
+        if (!questionData || questionData.length === 0) {
+          return { error: "Could not extract structured questions from the provided document." };
+        }
+      } catch (err) {
+        console.error("Pipeline Extraction Error:", err);
+        return { error: `Pipeline Extraction Failed: ${err.message}` };
       }
-    });
+    }
 
-    console.log("Used Bloom Levels:", Array.from(usedBloomLevels));
-    console.log("Dynamic Bloom Level Map:", bloomLevelMap);
+    const evaluationResult = Evaluate(questionData, coDetails, moduleHours, bloomLevelMap);
 
-    // Step 6: Process Question Data
-    const questionData = await Structurize([], filePath, bloomLevelMap);
-    const evaluationResult = Evaluate(
-      questionData,
-      coDetails,
-      moduleHours,
-      bloomLevelMap,
-    );
-
-    // Step 7: Save Data to MongoDB
     const paper = new PaperInfo({
       "College Name": formData["College Name"],
       Branch: formData.Branch,
@@ -167,34 +152,162 @@ const saveToDB = async (userId, Sequence, FormData, filePath) => {
       "Course Name": formData["Course Name"],
       "Course Code": formData["Course Code"],
       "Course Teacher": formData["Course Teacher"],
-      Sequence: {
-        COs: coDetails,
-        ModuleHours: moduleHours,
-      },
+      Sequence: { COs: coDetails, ModuleHours: moduleHours },
       blommLevelMap: bloomLevelMap,
       "Collected Data": evaluationResult,
       userId: userId,
     });
 
-    // Step 8: Save the paper document to MongoDB
     await paper.save();
-    uploadPaperBackup({ path: filePath }, paper).catch((err) =>
-      console.error("Drive backup failed:", err),
-    );
+
+    // Drive backup only works for Excel (needs file on disk) — skip for other formats
+    if (ext === ".xlsx") {
+      uploadPaperBackup({ path: filePath }, paper).catch((err) =>
+        console.error("Drive backup failed:", err.message)
+      );
+    }
+
     return evaluationResult;
   } catch (error) {
     console.error("Error saving to MongoDB:", error);
-    return { error: "Failed to process and save data" };
+    return { error: error.message || "Failed to process and save data" };
   }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gemini-powered PDF / Image handler → POST /upload/pdf
+// ─────────────────────────────────────────────────────────────────────────────
+exports.convertPDFOrImageToText = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded." });
+  }
+
+  const { userId } = req.user;
+  const filePath = req.file.path;
+
+  try {
+    let sequenceArray, formData;
+    try {
+      sequenceArray = JSON.parse(req.body.Sequence);
+      formData = JSON.parse(req.body.FormData);
+    } catch (e) {
+      return res.status(400).json({ error: "Invalid JSON in Sequence or FormData" });
+    }
+
+    const moduleHours = {};
+    const coDetails = {};
+
+    sequenceArray.forEach((item) => {
+      const match = item.name.match(/\d+/);
+      if (!match) return;
+      const number = match[0];
+
+      if (item.type === "CO") {
+        const coKey = `CO${number}`;
+        const blooms = Array.isArray(item.blooms)
+          ? item.blooms.filter((b) => typeof b === "string").map((b) => b.toLowerCase())
+          : typeof item.blooms === "string"
+            ? [item.blooms.toLowerCase()]
+            : [];
+        coDetails[coKey] = { weight: parseFloat(item.weight || 0), blooms };
+      } else if (item.type === "Module") {
+        moduleHours[`M${number}`] = parseFloat(item.hours || 0);
+      }
+    });
+
+    const allBloomLevels = ["create", "evaluate", "analyze", "apply", "understand", "remember"];
+    const bloomLevelMap = {};
+    const usedBloomLevels = new Set();
+
+    Object.values(coDetails).forEach((data) => {
+      const bloom = (data.blooms[0] || "").toLowerCase();
+      if (bloom && allBloomLevels.includes(bloom)) usedBloomLevels.add(bloom);
+    });
+
+    const sortedUsedBlooms = allBloomLevels.filter((l) => usedBloomLevels.has(l));
+    sortedUsedBlooms.forEach((bloom, index) => { bloomLevelMap[bloom] = index + 1; });
+
+    let nextLevel = sortedUsedBlooms.length + 1;
+    allBloomLevels.forEach((level) => {
+      if (!bloomLevelMap[level]) bloomLevelMap[level] = nextLevel <= 6 ? nextLevel++ : 6;
+    });
+
+    const { extractQuestionsFromFile } = require("../core/GeminiParser/geminiParser");
+    const extractedQuestions = await extractQuestionsFromFile(filePath, req.file.mimetype);
+
+    if (!extractedQuestions || extractedQuestions.length === 0) {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      return res.status(422).json({
+        error: "No questions could be extracted from this file.",
+        hint: "Make sure the file contains clearly numbered exam questions.",
+      });
+    }
+
+    const validCOs = Object.keys(coDetails);
+    const defaultCO = validCOs[0] || "CO1";
+
+    const questionData = extractedQuestions.map((q, index) => {
+      const bloom = FindBloomLevelsInText(q.questionText, bloomLevelMap);
+
+      const rawCO = (q.co || "").toString().trim().toUpperCase();
+      const safeCO = validCOs.includes(rawCO) ? rawCO : defaultCO;
+      const safeModule = q.module ? String(q.module) : "N/A";
+      const safeMarks = isNaN(parseFloat(q.marks)) ? 0 : parseFloat(q.marks);
+
+      return {
+        "Question No":            q.questionId || `Q${index + 1}`,
+        "Question":               q.questionText || "",
+        "Question Type":          "Descriptive",
+        "CO":                     safeCO,
+        "Marks":                  safeMarks,
+        "Module":                 safeModule,
+        "Bloom's Verbs":          bloom.words,
+        "Bloom's Taxonomy Level": bloom.highestLevel,
+        "Bloom's Highest Verb":   bloom.highestVerb,
+        "Extracted Verbs":        bloom.words,
+      };
+    });
+
+    const evaluationResult = Evaluate(questionData, coDetails, moduleHours, bloomLevelMap);
+
+    const paper = new PaperInfo({
+      "College Name":   formData["College Name"],
+      Branch:           formData.Branch,
+      "Year Of Study":  formData["Year Of Study"],
+      Semester:         formData.Semester,
+      "Course Name":    formData["Course Name"],
+      "Course Code":    formData["Course Code"],
+      "Course Teacher": formData["Course Teacher"],
+      Sequence:         { COs: coDetails, ModuleHours: moduleHours },
+      blommLevelMap:    bloomLevelMap,
+      "Collected Data": evaluationResult,
+      userId:           userId,
+    });
+
+    await paper.save();
+
+    // Drive backup not applicable for PDF/image flow (no Excel file on disk)
+
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+    return res.status(200).json({ success: true, data: evaluationResult });
+
+  } catch (error) {
+    console.error("❌ Gemini processing error:", error.message);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    return res.status(500).json({
+      error: "Failed to process file",
+      details: error.message,
+    });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 exports.getResults = async (req, res) => {
   try {
-    // Safely destructure userId from req.user, fallback to 'anonymous' if req.user is undefined
     const { userId } = req.user || { userId: "anonymous" };
-    // console.log(userId)
 
-    // Get all results for this user
     const userResults = await PaperInfo.find({ userId })
       .sort({ createdAt: -1 })
       .lean();
@@ -206,40 +319,20 @@ exports.getResults = async (req, res) => {
       });
     }
 
-    // Return the most recent result
     const latestResult = userResults[0];
     const { extractedText, ...responseData } = latestResult;
 
-    res.json({
-      success: true,
-      data: responseData,
-    });
+    res.json({ success: true, data: responseData });
   } catch (error) {
     console.error("Get results error:", error);
-    res.status(500).json({
-      error: "Internal server error",
-      message: "Failed to retrieve results",
-    });
+    res.status(500).json({ error: "Internal server error" });
   }
 };
 
-// exports.getResults = async(req, res) => {
-//   try{
-//     const id = req.params.id;
-//     console.log(id);
-//     const paper = await PaperInfo.findById(id);
-//     res.status(200).json(paper);
-//   } catch(error){
-//     res.status(500).json({message: error.message})
-//   }
-// };
-
 exports.getResultsById = async (req, res) => {
   try {
-    // Safely destructure userId from req.user, fallback to 'anonymous' if req.user is undefined
     const { userId } = req.user || { userId: "anonymous" };
 
-    // Get all results for this user
     const userResults = await PaperInfo.find({ userId })
       .sort({ createdAt: -1 })
       .lean();
@@ -251,19 +344,11 @@ exports.getResultsById = async (req, res) => {
       });
     }
 
-    // Return the most recent result
     const results = userResults.map(({ extractedText, ...rest }) => rest);
-
-    res.json({
-      success: true,
-      data: results,
-    });
+    res.json({ success: true, data: results });
   } catch (error) {
     console.error("Get results error:", error);
-    res.status(500).json({
-      error: "Internal server error",
-      message: "Failed to retrieve results",
-    });
+    res.status(500).json({ error: "Internal server error" });
   }
 };
 
