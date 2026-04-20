@@ -139,7 +139,7 @@ const Navbar = () => {
     }
 
     try {
-       const apiUrl = isRegisterMode ? 'https://qmetric-backend.onrender.com//auth/create-account' : 'https://qmetric-backend.onrender.com/auth/login';
+       const apiUrl = isRegisterMode ? 'https://qmetric-backend.onrender.com/auth/create-account' : 'https://qmetric-backend.onrender.com/auth/login';
       // const apiUrl = isRegisterMode
       //   ? "http://localhost:5000/auth/create-account"
       //   : "http://localhost:5000/auth/login";
