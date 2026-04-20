@@ -31,7 +31,7 @@ db.once('open', () => {
   console.log('Connected to MongoDB');
 
 app.use(cors({
-  origin: ['https://q-metric-3k72.vercel.app', 'http://localhost:3000', 'http://localhost:3001'], 
+  origin: ['https://qmetric-sand.vercel.app/', 'http://localhost:3000', 'http://localhost:3001'], 
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
 }));  
