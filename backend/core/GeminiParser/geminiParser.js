@@ -54,21 +54,57 @@ You are an academic question paper analyzer for Indian engineering universities.
 Your task: extract questions from this paper into a structured JSON array.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CRITICAL RULE — MULTI-PART QUESTIONS:
+RULE 1 — MULTI-PART QUESTIONS (sub-parts with individual marks):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Indian university question papers often have questions like:
+Some questions have sub-parts (i)(ii)(iii) that each carry individual marks:
 
   Q2 A) Consider the relation R(A,B,C,D,E)...         CO2
         (i)  Is AB a candidate Key? Justify.   (1 Mark)
         (ii) Find whether R is in 3NF or BCNF. (2 Mark)
         (iii) Is the decomposition lossless?   (2 Mark)
 
-This is ONE question (Q2A) with sub-parts (i), (ii), (iii).
-You MUST keep it as a SINGLE entry in the JSON array.
-Combine the parent question AND all its sub-parts into one "questionText".
-The total marks = sum of sub-part marks (1+2+2 = 5).
+→ Keep as ONE entry. Combine all sub-parts into one "questionText".
+→ marks = sum of all sub-part marks (1+2+2 = 5).
+→ DO NOT create separate entries for (i), (ii), (iii).
 
-DO NOT create separate entries for (i), (ii), (iii) — they belong to the same question.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RULE 2 — TABLE FORMAT (marks on parent row, shared among sub-questions):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Some papers use a TABLE where marks appear on the parent row, not per sub-question:
+
+  Q1   Answer the following              5      ← total marks for this group
+       A) Write the full form of ETP.         CO1
+       B) Define air pollution.               CO3
+       C) Explain light pollution.            CO1
+       D) What is acid rain?                  CO2
+       E) Name any two case studies of EIA.   CO5
+
+→ Each sub-question (A, B, C, D, E) is a SEPARATE entry in the JSON.
+→ Distribute parent marks equally: 5 marks ÷ 5 sub-questions = 1 mark each.
+→ Each entry gets: marks = round(parentMarks / numberOfSubQuestions).
+→ If division is uneven, give extra mark to first sub-question.
+
+  Q2   Answer the following              10     ← total marks for this group
+       A) Explain importance of EIA.          CO1
+       B) Differentiate renewable resources.  CO3
+       C) Draw diagram of energy pyramid.     CO2
+       D) Define biodiversity.                CO4
+       E) Match the following.                CO1
+
+→ 10 marks ÷ 5 sub-questions = 2 marks each.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RULE 3 — MARKS EXTRACTION PRIORITY ORDER:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Use this priority order to determine marks for each question:
+
+1. Individual marks written next to the question → use that number directly.
+2. Marks in brackets like [5M], (2 Mark), (1 mark) → use that number.
+3. Sub-parts (i)(ii)(iii) with own marks → sum them all up (Rule 1).
+4. Parent row has total marks, sub-questions have none → divide equally (Rule 2).
+5. Truly cannot determine → use null.
+
+NEVER return 0 for marks. Either find the correct number or return null.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 WHAT TO IGNORE COMPLETELY:
@@ -76,19 +112,25 @@ WHAT TO IGNORE COMPLETELY:
 - College name, address, logo
 - PRN field, date, time, max marks header
 - Instruction lines starting with a), b), c)...
-- "Answer the following" parent headings with no question text
+- "Answer the following" parent headings — extract only the actual sub-questions under them
 - Page numbers
-- Match-the-column filler rows (Column A/B headers and value rows —
-  keep the "Match the following" question itself as one entry)
+- Match-the-column filler rows (Column A/B headers and their value rows —
+  keep the "Match the following" question itself as one entry with distributed marks)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 FOR EACH REAL QUESTION EXTRACT:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- "questionId": Label from paper — "Q1A", "Q1B", "Q2A" etc. No sub-labels → "Q1", "Q2".
-- "questionText": Full combined text including all sub-parts (i)(ii)(iii) as one string.
-- "marks": Total marks (sum sub-parts if needed). null if not found.
+- "questionId": Label from paper — "Q1A", "Q1B", "Q2A" etc.
+  If no sub-labels exist use "Q1", "Q2" etc.
+
+- "questionText": Full question text. For Rule 1 combine all sub-parts into one string.
+  For Rule 2 keep each sub-question as a separate entry.
+
+- "marks": A positive number. NEVER 0. Use null only if truly unknown after all rules above.
+
 - "co": "CO1", "CO2" etc from right side of row. null if not found.
-- "module": Module number if mentioned, else null.
+
+- "module": Module number if mentioned (M1, Module 1 etc.), else null.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OUTPUT FORMAT:
@@ -96,14 +138,26 @@ OUTPUT FORMAT:
 Return ONLY a valid JSON array. No explanation. No markdown. No code blocks.
 Start directly with [ and end with ]
 
-Example (8 raw lines in paper → 6 questions in output):
+Example 1 — Table format paper (Rule 2):
+Q1 has 5 total marks, 5 sub-questions → 1 mark each
+Q2 has 10 total marks, 5 sub-questions → 2 marks each
 [
-  {"questionId":"Q1A","questionText":"Explain following constructs in ER Diagram with suitable example and Diagram. (i) Total and Partial Participation (ii) Minimum and maximum Cardinality","marks":4,"co":"CO1","module":null},
-  {"questionId":"Q1B","questionText":"What are the responsibilities of database administrators?","marks":3,"co":"CO1","module":null},
-  {"questionId":"Q1C","questionText":"Construct an E-R diagram for a hospital with a set of patients and a set of medical doctors. Associate with each patient a log of the various tests and examinations conducted.","marks":3,"co":"CO2","module":null},
-  {"questionId":"Q2A","questionText":"Consider the relation R(A,B,C,D,E) with F={AB->C, D->E, A->D}. (i) Is AB a candidate Key? Justify. (ii) Find whether R is in 3NF or BCNF with reasons. (iii) Is the decomposition into R1(A,B,C) and R2(A,D,E) lossless and dependency preserving? Justify.","marks":5,"co":"CO2","module":null},
-  {"questionId":"Q2B","questionText":"Explain Referential Integrity constraint with example.","marks":3,"co":"CO1","module":null},
-  {"questionId":"Q2C","questionText":"Consider the employee database schema given below, where the primary keys are underlined.","marks":2,"co":"CO1","module":null}
+  {"questionId":"Q1A","questionText":"Write the full form of ETP and STP.","marks":1,"co":"CO1","module":null},
+  {"questionId":"Q1B","questionText":"Define air pollution with example of air pollutants.","marks":1,"co":"CO3","module":null},
+  {"questionId":"Q1C","questionText":"Explain what light pollution is in single sentence.","marks":1,"co":"CO1","module":null},
+  {"questionId":"Q1D","questionText":"What is acid rain?","marks":1,"co":"CO2","module":null},
+  {"questionId":"Q1E","questionText":"Name any two case studies of EIA.","marks":1,"co":"CO5","module":null},
+  {"questionId":"Q2A","questionText":"Explain the importance and objectives of EIA in engineering projects.","marks":2,"co":"CO1","module":null},
+  {"questionId":"Q2B","questionText":"Differentiate between renewable and non-renewable resources with examples.","marks":2,"co":"CO3","module":null},
+  {"questionId":"Q2C","questionText":"Draw a neat and labeled diagram of energy pyramid.","marks":2,"co":"CO2","module":null},
+  {"questionId":"Q2D","questionText":"Define biodiversity and list its three main types.","marks":2,"co":"CO4","module":null},
+  {"questionId":"Q2E","questionText":"Match the following.","marks":2,"co":"CO1","module":null}
+]
+
+Example 2 — Sub-parts with individual marks (Rule 1):
+[
+  {"questionId":"Q1A","questionText":"Explain following constructs in ER Diagram. (i) Total and Partial Participation (ii) Minimum and maximum Cardinality","marks":4,"co":"CO1","module":null},
+  {"questionId":"Q2A","questionText":"Consider R(A,B,C,D,E) with F={AB->C, D->E, A->D}. (i) Is AB a candidate Key? Justify. (ii) Find whether R is in 3NF or BCNF. (iii) Is decomposition into R1(A,B,C) and R2(A,D,E) lossless? Justify.","marks":5,"co":"CO2","module":null}
 ]
 `;
 }
@@ -137,6 +191,11 @@ async function extractQuestionsFromFile(filePath, providedMimeType = null) {
       if (!Array.isArray(questions) || questions.length === 0) {
         throw new Error("No questions extracted from the file");
       }
+
+      // Safety net: replace any 0 marks with null (0 is never a valid exam mark)
+      questions.forEach((q) => {
+        if (q.marks === 0) q.marks = null;
+      });
 
       console.log(`✅ Extracted ${questions.length} questions using ${modelName}`);
       return questions;

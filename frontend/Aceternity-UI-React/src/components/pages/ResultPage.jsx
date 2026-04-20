@@ -7,46 +7,53 @@ import COCoverageChart from './report/COCoverageChart';
 
 // Small SVG gauge component for final score
 function polarToCartesian(cx, cy, r, angleDeg) {
-  const angleRad = (angleDeg - 90) * Math.PI / 180.0;
+  // 0deg = left end of semicircle, 180deg = right end
+  const rad = (angleDeg - 180) * Math.PI / 180;
   return {
-    x: cx + (r * Math.cos(angleRad)),
-    y: cy + (r * Math.sin(angleRad))
+    x: cx + r * Math.cos(rad),
+    y: cy + r * Math.sin(rad),
   };
 }
 
-function describeArc(cx, cy, r, startAngle, endAngle) {
-  const start = polarToCartesian(cx, cy, r, endAngle);
-  const end = polarToCartesian(cx, cy, r, startAngle);
-  const largeArcFlag = (endAngle - startAngle) <= 180 ? '0' : '1';
-  return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`;
+const API_BASE_URL = process.env.REACT_APP_API_URL;
+
+function describeArc(cx, cy, r, startDeg, endDeg) {
+  const s = polarToCartesian(cx, cy, r, startDeg);
+  const e = polarToCartesian(cx, cy, r, endDeg);
+  const large = endDeg - startDeg > 180 ? 1 : 0;
+  return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 1 ${e.x} ${e.y}`;
 }
 
 const Gauge = ({ value = 0, size = 220 }) => {
   const v = Math.max(0, Math.min(100, Number(value || 0)));
-  const width = size;
-  const height = Math.round(size / 2) + 20;
+
   const cx = size / 2;
   const cy = size / 2;
-  const r = Math.max(10, (size / 2) - 24);
+  const r  = size / 2 - 20;
 
-  const endAngle = 180 - (v / 100) * 180; // from 180 (left) to 0 (top)
-  const bgPath = describeArc(cx, cy, r, 180, 0);
-  const fgPath = describeArc(cx, cy, r, 180, endAngle);
+  // 0% = 0deg (far left), 100% = 180deg (far right)
+  const valueDeg = (v / 100) * 180;
 
-  const needlePt = polarToCartesian(cx, cy, r - 6, endAngle);
+  const bgPath = describeArc(cx, cy, r, 0, 180);
+  const fgPath = valueDeg > 0 ? describeArc(cx, cy, r, 0, valueDeg) : null;
+  const needlePt = polarToCartesian(cx, cy, r - 10, valueDeg);
 
   const color = v >= 80 ? '#16a34a' : v >= 60 ? '#2563eb' : v >= 40 ? '#f59e0b' : '#ef4444';
 
+  // height = just enough to show the arc + stroke overhang
+  const svgH = cy + r + 24;
+
   return (
     <div className="inline-block" aria-hidden="false">
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      <svg width={size} height={svgH} viewBox={`0 0 ${size} ${svgH}`}>
         {/* background semicircle */}
-        <path d={bgPath} fill="none" stroke="#e6e6e6" strokeWidth="18" strokeLinecap="round" />
+        <path d={bgPath} fill="none" stroke="#e6e6e6" strokeWidth="16" strokeLinecap="round" />
         {/* foreground arc */}
-        <path d={fgPath} fill="none" stroke={color} strokeWidth="18" strokeLinecap="round" />
-
+        {fgPath && (
+          <path d={fgPath} fill="none" stroke={color} strokeWidth="16" strokeLinecap="round" />
+        )}
         {/* needle */}
-        <line x1={cx} y1={cy} x2={needlePt.x} y2={needlePt.y} stroke="#222" strokeWidth="3" strokeLinecap="round" />
+        <line x1={cx} y1={cy} x2={needlePt.x} y2={needlePt.y} stroke="#222" strokeWidth="2.5" strokeLinecap="round" />
         <circle cx={cx} cy={cy} r="6" fill="#222" />
       </svg>
 
@@ -59,8 +66,6 @@ const Gauge = ({ value = 0, size = 220 }) => {
 };
 
 const ResultPage = () => {
-  const API_BASE_URL = process.env.REACT_APP_API_URL;
-
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -83,7 +88,7 @@ const ResultPage = () => {
       setLoading(true);
       setError(null);
       
-      const response = await fetch(`${API_BASE_URL}/upload/totext`, { 
+      const response = await fetch(`${API_BASE_URL}/upload/totext`, {
       // const response = await fetch('https://qmetric-2.onrender.com/upload/totext', {
         method: 'POST',
         method: 'GET',

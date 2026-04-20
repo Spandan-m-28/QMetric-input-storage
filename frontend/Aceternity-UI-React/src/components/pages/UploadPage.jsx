@@ -237,8 +237,8 @@ const UploadPage = () => {
     console.log("Uploading file...");
 
       const endpoint = isPDFOrImage(file)
-      ? 'http://localhost:5000/upload/pdf'      // PDF and images → Advance parser
-      : 'http://localhost:5000/upload/totext';  // Excel → existing parser
+      ? `${API_BASE_URL}/upload/pdf`      // PDF and images → Advance parser
+      : `${API_BASE_URL}/upload/totext`;  // Excel → existing parser
 
     try {
       const token = sessionStorage.getItem('accessToken');
@@ -252,7 +252,7 @@ const UploadPage = () => {
 
       // const response = await fetch(`${API_BASE_URL}/upload/totext`);
 
-      const response = await fetch(`${API_BASE_URL}/upload/totext`, {
+      const response = await fetch(endpoint, {
       // // const response = await fetch('https://qmetric-2.onrender.com/upload/totext', {
         method: 'POST',
         headers,
