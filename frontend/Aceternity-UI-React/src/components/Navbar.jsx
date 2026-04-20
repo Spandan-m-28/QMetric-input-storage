@@ -15,7 +15,6 @@ import {
 import AccessRestrictionModal from "./AccessRestrictionModal";
 import useAccessRestriction from "./hooks/useAccessRestriction";
 
-const API_BASE_URL = process.env.REACT_APP_API_URL
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -140,12 +139,8 @@ const Navbar = () => {
       return;
     }
 
-    const endpoint = isPDFOrImage(file)
-      ? `${API_BASE_URL}/upload/pdf `     // PDF and images → Advance parser
-      : `${API_BASE_URL}/upload/totext`;  // Excel → existing parser
-
     try {
-       
+       const apiUrl = isRegisterMode ? 'https://qmetric-backend.onrender.com/auth/create-account' : 'https://qmetric-backend.onrender.com/auth/login';
       // const apiUrl = isRegisterMode
       //   ? "http://localhost:5000/auth/create-account"
       //   : "http://localhost:5000/auth/login";

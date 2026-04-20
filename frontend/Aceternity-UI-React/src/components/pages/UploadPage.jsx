@@ -12,6 +12,8 @@ const UploadPage = () => {
     "Course Teacher": ""
   });
 
+  
+  const API_BASE_URL = process.env.REACT_APP_API_URL
 
   const [courseOutcomes, setCourseOutcomes] = useState([]);
   const [modules, setModules] = useState([]);
@@ -236,8 +238,8 @@ const UploadPage = () => {
     console.log("Uploading file...");
 
       const endpoint = isPDFOrImage(file)
-      ? `${process.env.REACT_APP_API_URL}/upload/pdf`     // PDF and images → Advance parser
-      : `${process.env.REACT_APP_API_URL}/upload/totext`;  // Excel → existing parser
+      ? `${API_BASE_URL}/upload/pdf`     // PDF and images → Advance parser
+      : `${API_BASE_URL}/upload/totext`;  // Excel → existing parser
 
     try {
       const token = sessionStorage.getItem('accessToken');
@@ -251,7 +253,7 @@ const UploadPage = () => {
 
       // const response = await fetch(`${API_BASE_URL}/upload/totext`);
 
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/upload/totext`, {
+      const response = await fetch(`endpoint`, {
       // // const response = await fetch('https://qmetric-2.onrender.com/upload/totext', {
         method: 'POST',
         headers,
