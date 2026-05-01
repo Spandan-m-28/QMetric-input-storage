@@ -354,14 +354,14 @@ exports.convertPDFOrImageToText = async (req, res) => {
 
     await paper.save();
 
-    uploadPaperBackup(
+    await uploadPaperBackup(
       {
         path: filePath,
         originalname: req.file.originalname,
         mimetype: req.file.mimetype,
       },
       paper,
-    ).catch((err) => console.error("Drive backup failed:", err.message));
+    );
 
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 

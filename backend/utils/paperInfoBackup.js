@@ -1,3 +1,8 @@
+const { google } = require("googleapis");
+const stream = require("stream");
+const fs = require("fs");
+const oauth2Client = require("../services/driveClient");
+const ensureFolderExists = require("./createCollegeFolder");
 const path = require("path");
 
 async function uploadPaperBackup(file, paper) {
@@ -8,14 +13,12 @@ async function uploadPaperBackup(file, paper) {
 
   const mainFolderId = process.env.GDRIVE_PAPER_BACKUP_FOLDER_ID;
 
-  // 1️⃣ PaperInfo folder
   const paperBackupFolderId = await ensureFolderExists(
     drive,
     "PaperInfo",
     mainFolderId
   );
 
-  // 2️⃣ College folder
   const collegeFolderName = (paper["College Name"] || "unknown_college")
     .toLowerCase()
     .replace(/\s+/g, "");
@@ -26,7 +29,6 @@ async function uploadPaperBackup(file, paper) {
     paperBackupFolderId
   );
 
-  // 3️⃣ Subject folder
   const subjectFolderName = (paper["Course Name"] || "unknown_subject")
     .toLowerCase()
     .replace(/\s+/g, "");
@@ -37,9 +39,8 @@ async function uploadPaperBackup(file, paper) {
     collegeFolderId
   );
 
-  // 4️⃣ Extract file extension & mimeType dynamically
-  const ext = path.extname(file.originalname); // .pdf, .xlsx, .png etc
-  const mimeType = file.mimetype; // comes from multer
+  const ext = path.extname(file.originalname);
+  const mimeType = file.mimetype;
 
   const teacher = (paper["Course Teacher"] || "unknown")
     .toLowerCase()
@@ -49,11 +50,9 @@ async function uploadPaperBackup(file, paper) {
 
   const fileName = `${teacher}_${year}${ext}`;
 
-  // 5️⃣ Stream
   const bufferStream = new stream.PassThrough();
   bufferStream.end(fs.readFileSync(file.path));
 
-  // 6️⃣ Upload
   await drive.files.create({
     requestBody: {
       name: fileName,
@@ -67,3 +66,5 @@ async function uploadPaperBackup(file, paper) {
 
   console.log("✅ File uploaded:", fileName);
 }
+
+module.exports = uploadPaperBackup;
