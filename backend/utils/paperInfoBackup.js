@@ -1,8 +1,4 @@
-const oauth2Client = require("../services/driveClient");
-const { google } = require("googleapis");
-const stream = require("stream");
-const fs = require("fs");
-const ensureFolderExists = require("./createCollegeFolder");
+const path = require("path");
 
 async function uploadPaperBackup(file, paper) {
   const drive = google.drive({
@@ -30,7 +26,7 @@ async function uploadPaperBackup(file, paper) {
     paperBackupFolderId
   );
 
-  // 3️⃣ Subject folder (Course Name)
+  // 3️⃣ Subject folder
   const subjectFolderName = (paper["Course Name"] || "unknown_subject")
     .toLowerCase()
     .replace(/\s+/g, "");
@@ -41,33 +37,33 @@ async function uploadPaperBackup(file, paper) {
     collegeFolderId
   );
 
-  // 4️⃣ File name
+  // 4️⃣ Extract file extension & mimeType dynamically
+  const ext = path.extname(file.originalname); // .pdf, .xlsx, .png etc
+  const mimeType = file.mimetype; // comes from multer
+
   const teacher = (paper["Course Teacher"] || "unknown")
     .toLowerCase()
     .replace(/\s+/g, "");
 
   const year = paper["Year Of Study"] || new Date().getFullYear();
 
-  const fileName = `${teacher}_${year}.xlsx`;
+  const fileName = `${teacher}_${year}${ext}`;
 
-  // 5️⃣ Read file from disk
+  // 5️⃣ Stream
   const bufferStream = new stream.PassThrough();
   bufferStream.end(fs.readFileSync(file.path));
 
-  // 6️⃣ Upload to Drive
+  // 6️⃣ Upload
   await drive.files.create({
     requestBody: {
       name: fileName,
       parents: [subjectFolderId],
     },
     media: {
-      mimeType:
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      mimeType: mimeType,
       body: bufferStream,
     },
   });
 
-  console.log("✅ Excel uploaded:", fileName);
+  console.log("✅ File uploaded:", fileName);
 }
-
-module.exports = uploadPaperBackup;

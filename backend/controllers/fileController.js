@@ -1,7 +1,10 @@
 //version2
 const path = require("path");
 const fs = require("fs");
-const { Structurize, FindBloomLevelsInText } = require("../core/Regex/regex_temp.js");
+const {
+  Structurize,
+  FindBloomLevelsInText,
+} = require("../core/Regex/regex_temp.js");
 const PaperInfo = require("../Model/PaperInfo");
 const { Evaluate } = require("../core/evaluate/evaluate");
 const uploadPaperBackup = require("../utils/paperInfoBackup");
@@ -20,7 +23,8 @@ exports.convertToText = async (req, res) => {
   if (!supportedExtensions.includes(fileExtension)) {
     return res.status(400).send({
       error: "Invalid File Format",
-      message: "Only Excel files (.xlsx), CSV files, and Digital text PDFs are supported.",
+      message:
+        "Only Excel files (.xlsx), CSV files, and Digital text PDFs are supported.",
     });
   }
 
@@ -34,7 +38,7 @@ exports.convertToText = async (req, res) => {
       userId,
       req.body.Sequence,
       req.body.FormData,
-      req.file.path,
+      req.file,
     );
 
     if (result.error) {
@@ -44,11 +48,13 @@ exports.convertToText = async (req, res) => {
     return res.status(200).json({ success: true, data: result });
   } catch (error) {
     console.error("Error during conversion or DB save:", error);
-    return res.status(500).send({ error: "Server error while processing file" });
+    return res
+      .status(500)
+      .send({ error: "Server error while processing file" });
   }
 };
 
-const saveToDB = async (userId, Sequence, FormData, filePath) => {
+const saveToDB = async (userId, Sequence, FormData, file) => {
   try {
     let sequenceArray, formData;
 
@@ -75,7 +81,9 @@ const saveToDB = async (userId, Sequence, FormData, filePath) => {
         const weight = parseFloat(item.weight || 0);
 
         const blooms = Array.isArray(item.blooms)
-          ? item.blooms.filter((b) => typeof b === "string").map((b) => b.toLowerCase())
+          ? item.blooms
+              .filter((b) => typeof b === "string")
+              .map((b) => b.toLowerCase())
           : typeof item.blooms === "string"
             ? [item.blooms.toLowerCase()]
             : [];
@@ -87,7 +95,14 @@ const saveToDB = async (userId, Sequence, FormData, filePath) => {
       }
     });
 
-    const allBloomLevels = ["create", "evaluate", "analyze", "apply", "understand", "remember"];
+    const allBloomLevels = [
+      "create",
+      "evaluate",
+      "analyze",
+      "apply",
+      "understand",
+      "remember",
+    ];
     const bloomLevelMap = {};
     const usedBloomLevels = new Set();
 
@@ -96,23 +111,35 @@ const saveToDB = async (userId, Sequence, FormData, filePath) => {
       if (bloom && allBloomLevels.includes(bloom)) usedBloomLevels.add(bloom);
     });
 
-    const sortedUsedBlooms = allBloomLevels.filter((level) => usedBloomLevels.has(level));
-    sortedUsedBlooms.forEach((bloom, index) => { bloomLevelMap[bloom] = index + 1; });
+    const sortedUsedBlooms = allBloomLevels.filter((level) =>
+      usedBloomLevels.has(level),
+    );
+    sortedUsedBlooms.forEach((bloom, index) => {
+      bloomLevelMap[bloom] = index + 1;
+    });
 
     let nextLevel = sortedUsedBlooms.length + 1;
     allBloomLevels.forEach((level) => {
-      if (!bloomLevelMap[level] && nextLevel <= 6) { bloomLevelMap[level] = nextLevel; nextLevel++; }
+      if (!bloomLevelMap[level] && nextLevel <= 6) {
+        bloomLevelMap[level] = nextLevel;
+        nextLevel++;
+      }
     });
-    allBloomLevels.forEach((level) => { if (!bloomLevelMap[level]) bloomLevelMap[level] = 6; });
+    allBloomLevels.forEach((level) => {
+      if (!bloomLevelMap[level]) bloomLevelMap[level] = 6;
+    });
 
     let questionData = [];
-    const ext = path.extname(filePath).toLowerCase();
+    const filePath = file.path;
+    const ext = path.extname(file.originalname).toLowerCase();
 
     if (ext === ".xlsx" || ext === ".csv") {
       questionData = await Structurize([], filePath, bloomLevelMap);
     } else {
       try {
-        const { parseTextToVirtualExcel } = require("../core/Parser/VirtualExcelAdapter");
+        const {
+          parseTextToVirtualExcel,
+        } = require("../core/Parser/VirtualExcelAdapter");
         let rawText = "";
 
         if (ext === ".pdf") {
@@ -124,17 +151,24 @@ const saveToDB = async (userId, Sequence, FormData, filePath) => {
           if (rawText.trim().length < 50) {
             return {
               statusCode: 400,
-              error: "Only digital text PDFs are supported. Scanned documents cannot be processed.",
+              error:
+                "Only digital text PDFs are supported. Scanned documents cannot be processed.",
             };
           }
         } else {
-          return { statusCode: 400, error: "Unsupported file format for text extraction." };
+          return {
+            statusCode: 400,
+            error: "Unsupported file format for text extraction.",
+          };
         }
 
         questionData = parseTextToVirtualExcel(rawText, bloomLevelMap);
 
         if (!questionData || questionData.length === 0) {
-          return { error: "Could not extract structured questions from the provided document." };
+          return {
+            error:
+              "Could not extract structured questions from the provided document.",
+          };
         }
       } catch (err) {
         console.error("Pipeline Extraction Error:", err);
@@ -142,7 +176,12 @@ const saveToDB = async (userId, Sequence, FormData, filePath) => {
       }
     }
 
-    const evaluationResult = Evaluate(questionData, coDetails, moduleHours, bloomLevelMap);
+    const evaluationResult = Evaluate(
+      questionData,
+      coDetails,
+      moduleHours,
+      bloomLevelMap,
+    );
 
     const paper = new PaperInfo({
       "College Name": formData["College Name"],
@@ -161,11 +200,14 @@ const saveToDB = async (userId, Sequence, FormData, filePath) => {
     await paper.save();
 
     // Drive backup only works for Excel (needs file on disk) — skip for other formats
-    if (ext === ".xlsx") {
-      uploadPaperBackup({ path: filePath }, paper).catch((err) =>
-        console.error("Drive backup failed:", err.message)
-      );
-    }
+    uploadPaperBackup(
+      {
+        path: file.path,
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+      },
+      paper,
+    );
 
     return evaluationResult;
   } catch (error) {
@@ -191,7 +233,9 @@ exports.convertPDFOrImageToText = async (req, res) => {
       sequenceArray = JSON.parse(req.body.Sequence);
       formData = JSON.parse(req.body.FormData);
     } catch (e) {
-      return res.status(400).json({ error: "Invalid JSON in Sequence or FormData" });
+      return res
+        .status(400)
+        .json({ error: "Invalid JSON in Sequence or FormData" });
     }
 
     const moduleHours = {};
@@ -205,7 +249,9 @@ exports.convertPDFOrImageToText = async (req, res) => {
       if (item.type === "CO") {
         const coKey = `CO${number}`;
         const blooms = Array.isArray(item.blooms)
-          ? item.blooms.filter((b) => typeof b === "string").map((b) => b.toLowerCase())
+          ? item.blooms
+              .filter((b) => typeof b === "string")
+              .map((b) => b.toLowerCase())
           : typeof item.blooms === "string"
             ? [item.blooms.toLowerCase()]
             : [];
@@ -215,7 +261,14 @@ exports.convertPDFOrImageToText = async (req, res) => {
       }
     });
 
-    const allBloomLevels = ["create", "evaluate", "analyze", "apply", "understand", "remember"];
+    const allBloomLevels = [
+      "create",
+      "evaluate",
+      "analyze",
+      "apply",
+      "understand",
+      "remember",
+    ];
     const bloomLevelMap = {};
     const usedBloomLevels = new Set();
 
@@ -224,16 +277,26 @@ exports.convertPDFOrImageToText = async (req, res) => {
       if (bloom && allBloomLevels.includes(bloom)) usedBloomLevels.add(bloom);
     });
 
-    const sortedUsedBlooms = allBloomLevels.filter((l) => usedBloomLevels.has(l));
-    sortedUsedBlooms.forEach((bloom, index) => { bloomLevelMap[bloom] = index + 1; });
+    const sortedUsedBlooms = allBloomLevels.filter((l) =>
+      usedBloomLevels.has(l),
+    );
+    sortedUsedBlooms.forEach((bloom, index) => {
+      bloomLevelMap[bloom] = index + 1;
+    });
 
     let nextLevel = sortedUsedBlooms.length + 1;
     allBloomLevels.forEach((level) => {
-      if (!bloomLevelMap[level]) bloomLevelMap[level] = nextLevel <= 6 ? nextLevel++ : 6;
+      if (!bloomLevelMap[level])
+        bloomLevelMap[level] = nextLevel <= 6 ? nextLevel++ : 6;
     });
 
-    const { extractQuestionsFromFile } = require("../core/GeminiParser/geminiParser");
-    const extractedQuestions = await extractQuestionsFromFile(filePath, req.file.mimetype);
+    const {
+      extractQuestionsFromFile,
+    } = require("../core/GeminiParser/geminiParser");
+    const extractedQuestions = await extractQuestionsFromFile(
+      filePath,
+      req.file.mimetype,
+    );
 
     if (!extractedQuestions || extractedQuestions.length === 0) {
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
@@ -255,43 +318,54 @@ exports.convertPDFOrImageToText = async (req, res) => {
       const safeMarks = isNaN(parseFloat(q.marks)) ? 0 : parseFloat(q.marks);
 
       return {
-        "Question No":            q.questionId || `Q${index + 1}`,
-        "Question":               q.questionText || "",
-        "Question Type":          "Descriptive",
-        "CO":                     safeCO,
-        "Marks":                  safeMarks,
-        "Module":                 safeModule,
-        "Bloom's Verbs":          bloom.words,
+        "Question No": q.questionId || `Q${index + 1}`,
+        Question: q.questionText || "",
+        "Question Type": "Descriptive",
+        CO: safeCO,
+        Marks: safeMarks,
+        Module: safeModule,
+        "Bloom's Verbs": bloom.words,
         "Bloom's Taxonomy Level": bloom.highestLevel,
-        "Bloom's Highest Verb":   bloom.highestVerb,
-        "Extracted Verbs":        bloom.words,
+        "Bloom's Highest Verb": bloom.highestVerb,
+        "Extracted Verbs": bloom.words,
       };
     });
 
-    const evaluationResult = Evaluate(questionData, coDetails, moduleHours, bloomLevelMap);
+    const evaluationResult = Evaluate(
+      questionData,
+      coDetails,
+      moduleHours,
+      bloomLevelMap,
+    );
 
     const paper = new PaperInfo({
-      "College Name":   formData["College Name"],
-      Branch:           formData.Branch,
-      "Year Of Study":  formData["Year Of Study"],
-      Semester:         formData.Semester,
-      "Course Name":    formData["Course Name"],
-      "Course Code":    formData["Course Code"],
+      "College Name": formData["College Name"],
+      Branch: formData.Branch,
+      "Year Of Study": formData["Year Of Study"],
+      Semester: formData.Semester,
+      "Course Name": formData["Course Name"],
+      "Course Code": formData["Course Code"],
       "Course Teacher": formData["Course Teacher"],
-      Sequence:         { COs: coDetails, ModuleHours: moduleHours },
-      blommLevelMap:    bloomLevelMap,
+      Sequence: { COs: coDetails, ModuleHours: moduleHours },
+      blommLevelMap: bloomLevelMap,
       "Collected Data": evaluationResult,
-      userId:           userId,
+      userId: userId,
     });
 
     await paper.save();
 
-    // Drive backup not applicable for PDF/image flow (no Excel file on disk)
+    uploadPaperBackup(
+      {
+        path: filePath,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+      },
+      paper,
+    ).catch((err) => console.error("Drive backup failed:", err.message));
 
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
     return res.status(200).json({ success: true, data: evaluationResult });
-
   } catch (error) {
     console.error("❌ Gemini processing error:", error.message);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
